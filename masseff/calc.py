@@ -92,7 +92,10 @@ class Mass_eff():
                 mass[spin] = self.mass_tensor(eig[spin], self.h)
         else:
             mass[Spin.up.name] = self.mass_tensor(eig[Spin.up.name][:61], self.h)
-            mass[Spin.down.name] = self.mass_tensor(eig[Spin.down.name][61:], self.h)
+            try:
+                mass[Spin.down.name] = self.mass_tensor(eig[Spin.down.name][61:], self.h)
+            except:
+                pass
         
         return mass
     
@@ -141,17 +144,3 @@ class Mass_eff():
         ind = max(np.argwhere(bs[0][:,1] > 0))        
 
         return ind, ind+1
-
-if __name__ == '__main__':
-    # example
-    scfdir = "../"
-    destdir = "./"
-    h = 0.01            # stepsize in 1/angstrom
-    k0_recp = [[0,0,0],[0,0,0]] # band extremum for the two spins
-    em = Mass_eff(h)    # instantiate 
-    em.write_vasp(k0_recp, scfdir, destdir)  # generate the k-point list for nscf calculation
-    #
-    # do a vasp nscf calculation
-    #
-    m = em.calc_mass('hole')  # determine the hole effective mass
-    print(h, m)
