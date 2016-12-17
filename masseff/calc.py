@@ -66,7 +66,7 @@ class Mass_eff():
             k0_up, k0_dn = k0_recp[0], k0_recp[1]
          
         list_k = self.kpoints(recp_vec, k0_up)
-        if is_spin and is_k_spin:
+        if r.is_spin and is_k_spin:
            list_k = np.concatenate((list_k, self.kpoints(recp_vec, k0_dn))) 
         nscf = MPNonSCFSet.from_prev_calc(scfdir, user_incar_settings=
                                           {"NCORE": 4, "EDIFF":"1E-7"})
