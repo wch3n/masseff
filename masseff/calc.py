@@ -37,7 +37,7 @@ class Mass_eff():
 
         return self.h*stcl
 
-    def kpoints(self, recp_vec, k0_recp, a, out='rec'):
+    def kpoints(self, recp_vec, k0_recp):
         '''List of kpoints for the nscf calculation
         in reciprocal lattice vectors; 
         a: scaling factor found in POSCAR
@@ -45,32 +45,36 @@ class Mass_eff():
         recp_vec_inv = np.linalg.inv(recp_vec)
         k0_cart = np.dot(k0_recp, recp_vec)
         kl_cart = k0_cart + self.stencil()
-        if out == 'rec':
-            kl_recp = np.dot(kl_cart, recp_vec_inv)
-            list_k = kl_recp
-        else:
-            list_k = kl_cart/(2*np.pi/a)
-        return list_k
+        kl_recp = np.dot(kl_cart, recp_vec_inv)
+        return kl_recp
 
-    def write_vasp(self, k0_recp, scfdir, destdir, out='rec'):
+    def write_vasp(self, k0_recp, scfdir, destdir):
         '''Generate VASP nscf input files
         '''
         r = Vasprun(join(scfdir, 'vasprun.xml'))
         recp_vec = r.lattice_rec.matrix
-        if not out == 'rec':
-            p = Poscar.from_file(join(scfdir, 'POSCAR'))
-            a = float(p.get_string().split()[1])
-        else:
-            a = 1.0
-        list_k = self.kpoints(recp_vec, k0_recp, a, out)
-        nscf = MPNonSCFSet.from_prev_calc(scfdir, user_incar_settings={"NCORE": 4, "EDIFF":"1E-7"})
+
+        is_k_spin = True
+        try:
+            len(k0_recp[0])
+        except:
+            is_k_spin = False
+            k0_up = k0_recp
+            k0_dn = None
+    
+        if is_k_spin:
+            k0_up, k0_dn = k0_recp[0], k0_recp[1]
+         
+        list_k = self.kpoints(recp_vec, k0_up)
+        if is_k_spin:
+           list_k = np.concatenate((list_k, self.kpoints(recp_vec, k0_dn))) 
+        nscf = MPNonSCFSet.from_prev_calc(scfdir, user_incar_settings=
+                                          {"NCORE": 4, "EDIFF":"1E-7"})
         nscf.write_input(destdir)
-        if out == 'rec':
-            mode = Kpoints.supported_modes.Reciprocal
-        else:
-            mode = Kpoints.supported_modes.Cartesian
-        kpt = Kpoints(style=mode, kpts=list_k, num_kpts=len(list_k), kpts_weights=[1.0]*len(list_k),
-              comment="5-point stencil h:{}".format(self.h))
+        mode = Kpoints.supported_modes.Reciprocal
+        kpt = Kpoints(style=mode, kpts=list_k, num_kpts=len(list_k), 
+                      kpts_weights=[1.0]*len(list_k),
+                      comment="5-point stencil h:{}".format(self.h))
         kpt.write_file(join(destdir, 'KPOINTS'))
 
     def calc_mass(self, type='hole', destdir='./'):
@@ -79,9 +83,16 @@ class Mass_eff():
         '''
         h = self.h
         eig = self.read_eigenvalues(type, destdir)
+
+        is_k_spin = eig[Spin.up.name].size == 122
+        
         mass = {}
-        for spin in eig.keys():
-            mass[spin] = self.mass_tensor(eig[spin], self.h)
+        if not is_k_spin:
+            for spin in eig.keys():
+                mass[spin] = self.mass_tensor(eig[spin], self.h)
+        else:
+            mass[Spin.up.name] = self.mass_tensor(eig[Spin.up.name][:61], self.h)
+            mass[Spin.down.name] = self.mass_tensor(eig[Spin.down.name][61:], self.h)
         
         return mass
     
@@ -116,8 +127,11 @@ class Mass_eff():
             spins = [Spin.up]
 
         for spin in spins:
-            ind = self.extremum_band_index(r, spin)
-            eig[spin.name] = r.eigenvalues[spin][:,ind,0]
+            vbi, cbi = self.extremum_band_index(r, spin)
+            if type == 'hole':
+                eig[spin.name] = r.eigenvalues[spin][:,vbi,0]
+            else:
+                eig[spin.name] = r.eigenvalues[spin][:,cbi,0]        
         
         return eig
 
@@ -126,14 +140,14 @@ class Mass_eff():
         bs = r.eigenvalues[spin]
         ind = max(np.argwhere(bs[0][:,1] > 0))        
 
-        return ind
+        return ind, ind+1
 
 if __name__ == '__main__':
     # example
     scfdir = "../"
     destdir = "./"
     h = 0.01            # stepsize in 1/angstrom
-    k0_recp = [0, 0, 0] # band extremum
+    k0_recp = [[0,0,0],[0,0,0]] # band extremum for the two spins
     em = Mass_eff(h)    # instantiate 
     em.write_vasp(k0_recp, scfdir, destdir)  # generate the k-point list for nscf calculation
     #
