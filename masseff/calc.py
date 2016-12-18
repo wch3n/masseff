@@ -43,9 +43,9 @@ class Mass_eff():
         a: scaling factor found in POSCAR
         ''' 
         rlv_inv = np.linalg.inv(rlv)
-        k0_cart = np.dot(k0_rlv, rlv)
+        k0_cart = np.dot(rlv.T, k0_rlv)
         kl_cart = k0_cart + self.stencil()
-        kl_rlv = np.dot(kl_cart, rlv_inv)
+        kl_rlv = np.dot(rlv_inv.T, kl_cart.T).T
         return kl_rlv
 
     def write_vasp(self, k0_rlv, scfdir, destdir):
