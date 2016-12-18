@@ -43,9 +43,9 @@ class Mass_eff():
         a: scaling factor found in POSCAR
         ''' 
         rlv_inv = np.linalg.inv(rlv)
-        k0_cart = np.dot(rlv.T, k0_rlv)
+        k0_cart = np.dot(k0_rlv, rlv)
         kl_cart = k0_cart + self.stencil()
-        kl_rlv = np.dot(rlv_inv.T, kl_cart.T).T
+        kl_rlv = np.dot(kl_cart, rlv_inv)
         return kl_rlv
 
     def write_vasp(self, k0_rlv, scfdir, destdir):
@@ -98,7 +98,7 @@ class Mass_eff():
                 mass[Spin.down.name], v[Spin.down.name] = self.mass_tensor(eig[Spin.down.name][61:], self.h)
             except:
                 pass
-
+        
         rlv_inv = np.linalg.inv(r.lattice_rec.matrix)
         v_rlv = {}
         for i in v.keys():
@@ -123,7 +123,7 @@ class Mass_eff():
         m_t[2,1] = m_t[1,2] 
 
         w, v = np.linalg.eig(m_t)
-        w /= 27.2114/1.8897**2 # -> atomic units
+        w /= 27.2114*0.52917721067**2 # -> atomic units
         m = 1.0/w
 
         return m, v
