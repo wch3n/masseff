@@ -37,37 +37,37 @@ class Mass_eff():
 
         return self.h*stcl
 
-    def kpoints(self, recp_vec, k0_recp):
+    def kpoints(self, rlv, k0_rlv):
         '''List of kpoints for the nscf calculation
         in reciprocal lattice vectors; 
         a: scaling factor found in POSCAR
         ''' 
-        recp_vec_inv = np.linalg.inv(recp_vec)
-        k0_cart = np.dot(k0_recp, recp_vec)
+        rlv_inv = np.linalg.inv(rlv)
+        k0_cart = np.dot(k0_rlv, rlv)
         kl_cart = k0_cart + self.stencil()
-        kl_recp = np.dot(kl_cart, recp_vec_inv)
-        return kl_recp
+        kl_rlv = np.dot(kl_cart, rlv_inv)
+        return kl_rlv
 
-    def write_vasp(self, k0_recp, scfdir, destdir):
+    def write_vasp(self, k0_rlv, scfdir, destdir):
         '''Generate VASP nscf input files
         '''
         r = Vasprun(join(scfdir, 'vasprun.xml'))
-        recp_vec = r.lattice_rec.matrix
+        rlv = r.lattice_rec.matrix
 
         is_k_spin = True
         try:
-            len(k0_recp[0])
+            len(k0_rlv[0])
         except:
             is_k_spin = False
-            k0_up = k0_recp
+            k0_up = k0_rlv
             k0_dn = None
     
         if is_k_spin:
-            k0_up, k0_dn = k0_recp[0], k0_recp[1]
+            k0_up, k0_dn = k0_rlv[0], k0_rlv[1]
          
-        list_k = self.kpoints(recp_vec, k0_up)
+        list_k = self.kpoints(rlv, k0_up)
         if r.is_spin and is_k_spin:
-           list_k = np.concatenate((list_k, self.kpoints(recp_vec, k0_dn))) 
+           list_k = np.concatenate((list_k, self.kpoints(rlv, k0_dn))) 
         nscf = MPNonSCFSet.from_prev_calc(scfdir, user_incar_settings=
                                           {"NCORE": 4, "EDIFF":"1E-7"})
         nscf.write_input(destdir)
@@ -80,24 +80,31 @@ class Mass_eff():
     def calc_mass(self, type='hole', destdir='./'):
         '''Calculate the effective mass (in m_0);
         e is a length-61 array (in eV).
+        output: eigenvalues and eigenvectors (in cartesian and rlv).
         '''
         h = self.h
-        eig = self.read_eigenvalues(type, destdir)
+        r = Vasprun(join(destdir, 'vasprun.xml'))
+        eig = self.read_eigenvalues(r, type, destdir)
 
         is_k_spin = eig[Spin.up.name].size == 122
         
-        mass = {}
+        mass = {}; v={}
         if not is_k_spin:
             for spin in eig.keys():
-                mass[spin] = self.mass_tensor(eig[spin], self.h)
+                mass[spin], v[spin] = self.mass_tensor(eig[spin], self.h)
         else:
-            mass[Spin.up.name] = self.mass_tensor(eig[Spin.up.name][:61], self.h)
+            mass[Spin.up.name], v[Spin.up.name] = self.mass_tensor(eig[Spin.up.name][:61], self.h)
             try:
-                mass[Spin.down.name] = self.mass_tensor(eig[Spin.down.name][61:], self.h)
+                mass[Spin.down.name], v[Spin.down.name] = self.mass_tensor(eig[Spin.down.name][61:], self.h)
             except:
                 pass
+
+        rlv_inv = np.linalg.inv(r.lattice_rec.matrix)
+        v_rlv = {}
+        for i in v.keys():
+            v_rlv[i] = np.dot(rlv_inv.T, v[i])
         
-        return mass
+        return mass, v, v_rlv
     
     @staticmethod
     def mass_tensor(e,h):
@@ -119,10 +126,9 @@ class Mass_eff():
         w /= 27.2114/1.8897**2 # -> atomic units
         m = 1.0/w
 
-        return m
+        return m, v
 
-    def read_eigenvalues(self, type, destdir):
-        r = Vasprun(join(destdir, 'vasprun.xml'))
+    def read_eigenvalues(self, r, type, destdir):
         eig = {}
         if r.is_spin:
             spins = [Spin.up, Spin.down]
