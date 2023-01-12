@@ -1,6 +1,6 @@
 import numpy as np
 from pymatgen.io.vasp.outputs import Vasprun
-from pymatgen.io.vasp.inputs import Kpoints, Poscar
+from pymatgen.io.vasp.inputs import Kpoints
 from pymatgen.io.vasp.sets import MPNonSCFSet
 from pymatgen.electronic_structure.bandstructure import Spin
 from os.path import join
@@ -52,7 +52,7 @@ class Mass_eff():
         '''Generate VASP nscf input files
         '''
         r = Vasprun(join(scfdir, 'vasprun.xml'))
-        rlv = r.lattice_rec.matrix
+        rlv = r.get_band_structure().lattice_rec.matrix
 
         is_k_spin = True
         try:
@@ -77,14 +77,15 @@ class Mass_eff():
                       comment="5-point stencil h:{}".format(self.h))
         kpt.write_file(join(destdir, 'KPOINTS'))
 
-    def calc_mass(self, type='hole', destdir='./'):
+    def calc_mass(self, typ='hole', band_ind=-1, destdir='./'):
         '''Calculate the effective mass (in m_0);
         e is a length-61 array (in eV).
         output: eigenvalues and eigenvectors (in cartesian and rlv).
         '''
         h = self.h
+        self.band_ind = band_ind
         r = Vasprun(join(destdir, 'vasprun.xml'))
-        eig = self.read_eigenvalues(r, type, destdir)
+        eig = self.read_eigenvalues(r, typ, destdir)
 
         is_k_spin = eig[Spin.up.name].size == 122
         
@@ -99,7 +100,7 @@ class Mass_eff():
             except:
                 pass
         
-        rlv_inv = np.linalg.inv(r.lattice_rec.matrix)
+        rlv_inv = np.linalg.inv(r.get_band_structure().lattice_rec.matrix)
         v_rlv = {}
         for i in v.keys():
             v_rlv[i] = np.dot(rlv_inv.T, v[i])
@@ -128,7 +129,7 @@ class Mass_eff():
 
         return m, v
 
-    def read_eigenvalues(self, r, type, destdir):
+    def read_eigenvalues(self, r, typ, destdir):
         eig = {}
         if r.is_spin:
             spins = [Spin.up, Spin.down]
@@ -136,11 +137,14 @@ class Mass_eff():
             spins = [Spin.up]
 
         for spin in spins:
-            vbi, cbi = self.extremum_band_index(r, spin)
-            if type == 'hole':
-                eig[spin.name] = r.eigenvalues[spin][:,vbi,0]
-            else:
-                eig[spin.name] = r.eigenvalues[spin][:,cbi,0]        
+            if self.band_ind == -1:
+                vbi, cbi = self.extremum_band_index(r, spin)
+                if typ == 'hole':
+                    eig[spin.name] = r.eigenvalues[spin][:,vbi,0]
+                else:
+                    eig[spin.name] = r.eigenvalues[spin][:,cbi,0]
+            else: #band index specified manually (starts from 1)
+                eig[spin.name] = r.eigenvalues[spin][:, self.band_ind-1,0]
         
         return eig
 
@@ -148,5 +152,4 @@ class Mass_eff():
     def extremum_band_index(r, spin):
         bs = r.eigenvalues[spin]
         ind = max(np.argwhere(bs[0][:,1] > 0))        
-
         return ind, ind+1
