@@ -3,8 +3,8 @@ from setuptools import setup
 setup(name='masseff', 
       version='0.1',
       description='Effective mass calculator',
-      author='wayn3',
-      author_email='waynechen@gmail.com',
+      author='wei.chen',
+      author_email='wch3n@pm.me',
       license='MIT',
       packages=['masseff'],
       install_requires=[
